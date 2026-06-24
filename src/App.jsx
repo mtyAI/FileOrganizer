@@ -15,10 +15,12 @@ import {
   FolderOpen,
   Gamepad2,
   Loader2,
+  Moon,
   Play,
   RefreshCw,
   RotateCcw,
   Search,
+  Sun,
   Trash2,
   XCircle
 } from "lucide-react";
@@ -317,6 +319,7 @@ function App() {
     undo: true,
     backup: true
   });
+  const [theme, setTheme] = useState(() => window.localStorage?.getItem("fileOrganizerTheme") || "light");
   const [logs, setLogs] = useState([
     { time: now(), type: "info", message: "フォルダを選択してください" }
   ]);
@@ -380,6 +383,14 @@ function App() {
 
   const toggleInspectorSection = (key) => {
     setInspectorOpen((current) => ({ ...current, [key]: !current[key] }));
+  };
+
+  const toggleTheme = () => {
+    setTheme((current) => {
+      const nextTheme = current === "dark" ? "light" : "dark";
+      window.localStorage?.setItem("fileOrganizerTheme", nextTheme);
+      return nextTheme;
+    });
   };
 
   const startColumnResize = (key, event) => {
@@ -721,13 +732,24 @@ function App() {
   };
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell theme-${theme}`}>
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand-mark">
-            <Folder size={19} />
+          <span className="brand-title">
+            <span className="brand-mark">
+              <Folder size={19} />
+            </span>
+            <span>FileOrganizer</span>
           </span>
-          <span>FileOrganizer</span>
+          <button
+            className="theme-toggle"
+            type="button"
+            onClick={toggleTheme}
+            aria-label={theme === "dark" ? "ライトモードに切り替え" : "ダークモードに切り替え"}
+            title={theme === "dark" ? "ライトモード" : "ダークモード"}
+          >
+            {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
         </div>
 
         <section className="sidebar-section">
