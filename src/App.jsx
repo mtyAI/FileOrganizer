@@ -110,6 +110,26 @@ const CATEGORY_ICONS = {
   code: FileCode2
 };
 
+const DEFAULT_COLUMN_WIDTHS = {
+  select: 44,
+  name: 220,
+  currentPath: 260,
+  destination: 300,
+  category: 112,
+  duplicate: 78,
+  include: 78
+};
+
+const COLUMN_MIN_WIDTHS = {
+  select: 44,
+  name: 150,
+  currentPath: 180,
+  destination: 200,
+  category: 96,
+  duplicate: 70,
+  include: 70
+};
+
 const now = () => new Date().toLocaleTimeString("ja-JP", { hour12: false });
 const formatBytes = (bytes) => {
   if (!bytes) return "0 B";
@@ -287,6 +307,14 @@ function App() {
   const [activeView, setActiveView] = useState("all");
   const [busy, setBusy] = useState(false);
   const [lastOperations, setLastOperations] = useState([]);
+  const [columnWidths, setColumnWidths] = useState(DEFAULT_COLUMN_WIDTHS);
+  const [inspectorOpen, setInspectorOpen] = useState({
+    duplicates: true,
+    safety: true,
+    logs: true,
+    undo: true,
+    backup: true
+  });
   const [logs, setLogs] = useState([
     { time: now(), type: "info", message: "フォルダを選択してください" }
   ]);
@@ -333,9 +361,47 @@ function App() {
   const hasRealWrite = Boolean(rootHandle || selectedFolderPath);
   const duplicateCount = duplicates.reduce((sum, group) => sum + group.length, 0);
   const longPaths = plan.filter((file) => file.destination.length > 180);
+  const previewColumns = [
+    { key: "select", label: "", width: columnWidths.select },
+    { key: "name", label: "ファイル名", width: columnWidths.name, resizable: true },
+    { key: "currentPath", label: "現在のパス", width: columnWidths.currentPath, resizable: true },
+    { key: "destination", label: "移動先（提案）", width: columnWidths.destination, resizable: true },
+    { key: "category", label: "カテゴリ", width: columnWidths.category },
+    { key: "duplicate", label: "重複", width: columnWidths.duplicate },
+    { key: "include", label: "含める", width: columnWidths.include }
+  ];
+  const previewTableWidth = previewColumns.reduce((sum, column) => sum + column.width, 0);
 
   const addLog = (type, message) => {
     setLogs((current) => [{ time: now(), type, message }, ...current].slice(0, 80));
+  };
+
+  const toggleInspectorSection = (key) => {
+    setInspectorOpen((current) => ({ ...current, [key]: !current[key] }));
+  };
+
+  const startColumnResize = (key, event) => {
+    if (!COLUMN_MIN_WIDTHS[key]) return;
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = columnWidths[key];
+    document.body.classList.add("resizing-column");
+
+    const onPointerMove = (moveEvent) => {
+      const nextWidth = Math.max(COLUMN_MIN_WIDTHS[key], startWidth + moveEvent.clientX - startX);
+      setColumnWidths((current) => ({ ...current, [key]: nextWidth }));
+    };
+
+    const stopResize = () => {
+      document.body.classList.remove("resizing-column");
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", stopResize);
+      window.removeEventListener("pointercancel", stopResize);
+    };
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", stopResize);
+    window.addEventListener("pointercancel", stopResize);
   };
 
   const resetIncludeMap = (nextFiles, nextCategories = categories) => {
@@ -852,22 +918,35 @@ function App() {
           </div>
 
           <div className="table-wrap">
-            <table>
+            <table style={{ width: `max(100%, ${previewTableWidth}px)` }}>
+              <colgroup>
+                {previewColumns.map((column) => (
+                  <col key={column.key} style={{ width: `${column.width}px` }} />
+                ))}
+              </colgroup>
               <thead>
                 <tr>
-                  <th>
-                    <input
-                      type="checkbox"
-                      checked={includedFiles.length > 0 && includedFiles.length === plan.filter((file) => file.category).length}
-                      onChange={(event) => setAllIncluded(event.target.checked)}
-                    />
-                  </th>
-                  <th>ファイル名</th>
-                  <th>現在のパス</th>
-                  <th>移動先（提案）</th>
-                  <th>カテゴリ</th>
-                  <th>重複</th>
-                  <th>含める</th>
+                  {previewColumns.map((column) => (
+                    <th key={column.key} className={column.resizable ? "resizable-column" : ""}>
+                      {column.key === "select" ? (
+                        <input
+                          type="checkbox"
+                          checked={includedFiles.length > 0 && includedFiles.length === plan.filter((file) => file.category).length}
+                          onChange={(event) => setAllIncluded(event.target.checked)}
+                        />
+                      ) : (
+                        <span>{column.label}</span>
+                      )}
+                      {column.resizable && (
+                        <button
+                          className="column-resizer"
+                          type="button"
+                          onPointerDown={(event) => startColumnResize(column.key, event)}
+                          aria-label={`${column.label}の列幅を変更`}
+                        />
+                      )}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -946,13 +1025,15 @@ function App() {
       </main>
 
       <aside className="inspector">
-        <section className="inspector-section">
+        <section className={`inspector-section collapsible-panel ${inspectorOpen.duplicates ? "" : "collapsed"}`}>
           <div className="inspector-title">
-            <h2>重複グループ</h2>
-            <span>{duplicates.length}</span>
-            <ChevronUp size={16} />
+            <button className="inspector-heading-button" type="button" onClick={() => toggleInspectorSection("duplicates")}>
+              <span className="inspector-heading-text">重複グループ</span>
+              <span className="inspector-count">{duplicates.length}</span>
+              <ChevronUp size={16} />
+            </button>
           </div>
-          <div className="duplicate-list">
+          <div className="collapsible-content duplicate-list">
             {duplicates.slice(0, 4).map((group) => (
               <div className="duplicate-card" key={`${group[0].name}:${group[0].size}`}>
                 <FileImage size={18} />
@@ -969,24 +1050,34 @@ function App() {
           </div>
         </section>
 
-        <section className="inspector-section">
-          <h2>実行前の安全チェック</h2>
-          <CheckItem ok={includedFiles.length > 0} label="移動対象が選択済み" />
-          <CheckItem ok={hasRealWrite} warn={!hasRealWrite} label={hasRealWrite ? "フォルダの書き込み権限" : "フォルダ未選択"} />
-          <CheckItem ok={longPaths.length === 0} warn={longPaths.length > 0} label={`長すぎるパス: ${longPaths.length} 件`} />
-          <CheckItem ok={duplicates.length === 0} warn={duplicates.length > 0} label={`重複候補: ${duplicateCount} 件`} />
-          <CheckItem ok label="バックアップ準備" />
-          <CheckItem ok label="Undo準備" />
+        <section className={`inspector-section collapsible-panel ${inspectorOpen.safety ? "" : "collapsed"}`}>
+          <div className="inspector-title">
+            <button className="inspector-heading-button" type="button" onClick={() => toggleInspectorSection("safety")}>
+              <span className="inspector-heading-text">実行前の安全チェック</span>
+              <ChevronUp size={16} />
+            </button>
+          </div>
+          <div className="collapsible-content">
+            <CheckItem ok={includedFiles.length > 0} label="移動対象が選択済み" />
+            <CheckItem ok={hasRealWrite} warn={!hasRealWrite} label={hasRealWrite ? "フォルダの書き込み権限" : "フォルダ未選択"} />
+            <CheckItem ok={longPaths.length === 0} warn={longPaths.length > 0} label={`長すぎるパス: ${longPaths.length} 件`} />
+            <CheckItem ok={duplicates.length === 0} warn={duplicates.length > 0} label={`重複候補: ${duplicateCount} 件`} />
+            <CheckItem ok label="バックアップ準備" />
+            <CheckItem ok label="Undo準備" />
+          </div>
         </section>
 
-        <section className="inspector-section log-section">
+        <section className={`inspector-section collapsible-panel log-section ${inspectorOpen.logs ? "" : "collapsed"}`}>
           <div className="inspector-title">
-            <h2>ログ</h2>
+            <button className="inspector-heading-button" type="button" onClick={() => toggleInspectorSection("logs")}>
+              <span className="inspector-heading-text">ログ</span>
+              <ChevronUp size={16} />
+            </button>
             <button className="text-button small" onClick={() => setLogs([])}>
               クリア
             </button>
           </div>
-          <div className="log-list">
+          <div className="collapsible-content log-list">
             {logs.map((log, index) => (
               <div className="log-row" key={`${log.time}-${index}`}>
                 <span className="log-time">{log.time}</span>
@@ -996,38 +1087,48 @@ function App() {
           </div>
         </section>
 
-        <section className="undo-box">
-          <div>
-            <h2>Undo（取り消し）</h2>
+        <section className={`undo-box collapsible-panel ${inspectorOpen.undo ? "" : "collapsed"}`}>
+          <div className="inspector-title">
+            <button className="inspector-heading-button" type="button" onClick={() => toggleInspectorSection("undo")}>
+              <span className="inspector-heading-text">Undo（取り消し）</span>
+              <ChevronUp size={16} />
+            </button>
+          </div>
+          <div className="collapsible-content">
             <p>
               最後の実行: {lastOperations.length ? `${lastOperations.length.toLocaleString()} 件` : "なし"}
               <br />
               {lastOperations.length ? "実ファイルを元の場所へ戻します。" : "直前の実行はありません。"}
             </p>
+            <button className="outline-button full undo" onClick={undoLastRun} disabled={busy || !lastOperations.length}>
+              <RotateCcw size={18} />
+              Undo
+            </button>
           </div>
-          <button className="outline-button full undo" onClick={undoLastRun} disabled={busy || !lastOperations.length}>
-            <RotateCcw size={18} />
-            Undo
-          </button>
         </section>
 
-        <section className="undo-box">
-          <div>
-            <h2>バックアップ</h2>
+        <section className={`undo-box collapsible-panel ${inspectorOpen.backup ? "" : "collapsed"}`}>
+          <div className="inspector-title">
+            <button className="inspector-heading-button" type="button" onClick={() => toggleInspectorSection("backup")}>
+              <span className="inspector-heading-text">バックアップ</span>
+              <ChevronUp size={16} />
+            </button>
+          </div>
+          <div className="collapsible-content">
             <p>
               保存先: _asset-organizer-backup
               <br />
               選択中フォルダ内のバックアップをまとめて削除します。
             </p>
+            <button
+              className="outline-button full danger-outline"
+              onClick={deleteBackups}
+              disabled={busy || !isDesktopApp || !selectedFolderPath}
+            >
+              <Trash2 size={18} />
+              バックアップを削除
+            </button>
           </div>
-          <button
-            className="outline-button full danger-outline"
-            onClick={deleteBackups}
-            disabled={busy || !isDesktopApp || !selectedFolderPath}
-          >
-            <Trash2 size={18} />
-            バックアップを削除
-          </button>
         </section>
       </aside>
     </div>

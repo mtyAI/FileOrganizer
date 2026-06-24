@@ -664,32 +664,56 @@ td {
 }
 
 th {
+  position: relative;
   color: #63757a;
   font-size: 11px;
   font-weight: 850;
 }
 
-th:first-child,
-td:first-child {
-  width: 42px;
+th > span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-th:nth-child(2) {
-  width: 170px;
+.resizable-column {
+  padding-right: 16px;
 }
 
-th:nth-child(3),
-th:nth-child(4) {
-  width: 23%;
+.column-resizer {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  z-index: 3;
+  width: 9px;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  cursor: col-resize;
+  opacity: 1;
 }
 
-th:nth-child(5) {
-  width: 104px;
+.column-resizer::after {
+  position: absolute;
+  top: 8px;
+  right: 4px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 999px;
+  background: #c7d7d9;
+  content: "";
 }
 
-th:nth-child(6),
-th:nth-child(7) {
-  width: 68px;
+.column-resizer:hover::after,
+body.resizing-column .column-resizer::after {
+  background: #0f9b8e;
+}
+
+body.resizing-column {
+  cursor: col-resize;
+  user-select: none;
 }
 
 .file-cell {
@@ -853,11 +877,29 @@ th:nth-child(7) {
   margin-bottom: 10px;
 }
 
-.inspector-title h2 {
-  margin: 0;
+.inspector-heading-button {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  min-width: 0;
+  min-height: 22px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  text-align: left;
 }
 
-.inspector-title span {
+.inspector-heading-text {
+  overflow: hidden;
+  color: #111718;
+  font-size: 12px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inspector-count {
   margin-left: auto;
   border-radius: 999px;
   background: #e7eff0;
@@ -865,6 +907,29 @@ th:nth-child(7) {
   color: #607279;
   font-size: 11px;
   font-weight: 850;
+}
+
+.inspector-heading-button svg {
+  flex: 0 0 auto;
+  margin-left: 8px;
+  color: #607279;
+  transition: transform 0.18s ease;
+}
+
+.collapsible-panel.collapsed .inspector-title {
+  margin-bottom: 0;
+}
+
+.collapsible-panel.collapsed .collapsible-content {
+  display: none;
+}
+
+.collapsible-panel.collapsed .inspector-heading-button svg {
+  transform: rotate(180deg);
+}
+
+.collapsible-content {
+  min-width: 0;
 }
 
 .duplicate-card {
@@ -908,12 +973,17 @@ th:nth-child(7) {
 }
 
 .log-section {
+  flex: 0 0 238px;
   min-height: 0;
   overflow: hidden;
 }
 
+.log-section.collapsed {
+  flex: 0 0 auto;
+}
+
 .log-list {
-  max-height: 118px;
+  height: 178px;
   overflow: auto;
 }
 
@@ -951,10 +1021,6 @@ th:nth-child(7) {
 
 .log-message.error {
   color: #bd3230;
-}
-
-.undo-box {
-  margin-top: auto;
 }
 
 .undo {
