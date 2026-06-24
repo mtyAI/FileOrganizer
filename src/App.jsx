@@ -20,7 +20,6 @@ import {
   RotateCcw,
   Search,
   Trash2,
-  UploadCloud,
   XCircle
 } from "lucide-react";
 
@@ -799,14 +798,6 @@ function App() {
             </button>
           </div>
         </header>
-
-        <button className="drop-zone" onClick={() => scanWithDirectoryPicker()} disabled={busy}>
-          <UploadCloud size={34} />
-          <span>
-            <strong>フォルダを選択</strong>
-            <small>サブフォルダを含めてスキャンします。通常入力ではプレビューのみ。</small>
-          </span>
-        </button>
 
         <section className="summary-grid">
           <Summary label="総ファイル数" value={files.length.toLocaleString()} />
