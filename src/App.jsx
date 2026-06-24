@@ -111,23 +111,6 @@ const CATEGORY_ICONS = {
   code: FileCode2
 };
 
-const SAMPLE_FILES = [
-  ["intro_v2_final.mp4", "未整理/動画", 192_400_000],
-  ["intro_v2_final_01.mp4", "未整理/動画/バックアップ", 192_400_000],
-  ["BGM_future_city.wav", "未整理/音楽", 45_700_000],
-  ["BGM_future_city(1).wav", "未整理/音楽/コピー", 45_700_000],
-  ["logo_white.png", "未整理/画像/ロゴ", 512_000],
-  ["logo_white (2).png", "未整理/画像/旧データ", 512_000],
-  ["thumbnail_01.jpg", "未整理/サムネ", 1_200_000],
-  ["font_NotoSans_JP.otf", "未整理/フォント", 16_700_000],
-  ["motion_graphics_pack.zip", "未整理/素材パック", 120_300_000],
-  ["Readme.txt", "未整理", 2_000],
-  ["SE_button_click.wav", "未整理/効果音", 128_000],
-  ["overlay_particle_01.mov", "未整理/動画/エフェクト", 67_800_000],
-  ["player_controller.prefab", "未整理/Unity", 84_000],
-  ["city_building_pack.fbx", "未整理/3D", 23_400_000]
-];
-
 const now = () => new Date().toLocaleTimeString("ja-JP", { hour12: false });
 const formatBytes = (bytes) => {
   if (!bytes) return "0 B";
@@ -291,18 +274,7 @@ function App() {
   const inputRef = useRef(null);
   const isDesktopApp = Boolean(window.assetOrganizer);
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
-  const [files, setFiles] = useState(() =>
-    SAMPLE_FILES.map(([name, folderPath, size], index) => ({
-      id: makeFileId(`${folderPath}/${name}`, size, index),
-      name,
-      folderPath,
-      currentPath: `${folderPath}/${name}`,
-      size,
-      lastModified: Date.now() - index * 3600000,
-      ext: getExt(name),
-      source: "sample"
-    }))
-  );
+  const [files, setFiles] = useState([]);
   const [rootHandle, setRootHandle] = useState(null);
   const [selectedFolderPath, setSelectedFolderPath] = useState("");
   const [selectedFolderName, setSelectedFolderName] = useState("フォルダ選択無し");
@@ -317,8 +289,7 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [lastOperations, setLastOperations] = useState([]);
   const [logs, setLogs] = useState([
-    { time: now(), type: "info", message: "デモデータを読み込みました" },
-    { time: now(), type: "ok", message: "移動前プレビューを表示中です" }
+    { time: now(), type: "info", message: "フォルダを選択してください" }
   ]);
 
   const plan = useMemo(() => buildPlan(files, categories, includeMap), [files, categories, includeMap]);

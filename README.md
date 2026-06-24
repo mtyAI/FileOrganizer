@@ -2,13 +2,11 @@
 
 Windows向けの素材整理アプリです。選択したフォルダ内のファイルを拡張子ごとに分類し、実行前に移動先をプレビューできます。
 
-アプリを開いた直後に表示されているファイル一覧は、動作イメージを確認するためのサンプルです。実際の整理対象ではありません。`フォルダを選択` から自分のフォルダを選ぶと、選択したフォルダの内容に切り替わります。
-
 ## ダウンロード
 
 最新版は GitHub Releases からダウンロードしてください。
 
-- [AssetOrganizer-win-v0.1.0.zip](https://github.com/mtyAI/asset-organizer-mvp/releases/download/v0.1.0/AssetOrganizer-win-v0.1.0.zip)
+- [AssetOrganizer-win-v0.1.1.zip](https://github.com/mtyAI/asset-organizer-mvp/releases/download/v0.1.1/AssetOrganizer-win-v0.1.1.zip)
 
 zip を展開して、`AssetOrganizer.exe` を起動します。
 
