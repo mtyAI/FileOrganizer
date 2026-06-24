@@ -3,7 +3,8 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 
 const isDev = process.argv.includes("--dev");
-const BACKUP_DIR = "_asset-organizer-backup";
+const BACKUP_DIR = "_file-organizer-backup";
+const BACKUP_DIRS = [BACKUP_DIR, "_asset-organizer-backup"];
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -11,7 +12,7 @@ function createWindow() {
     height: 900,
     minWidth: 1040,
     minHeight: 720,
-    title: "素材整頓",
+    title: "FileOrganizer",
     backgroundColor: "#ffffff",
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -65,7 +66,7 @@ async function scanDirectory(rootPath, targetFolders, excludedFolders = [], curr
     if (entry.isDirectory()) {
       const relativePath = toRelative(rootPath, absolutePath);
       if (
-        entry.name === BACKUP_DIR ||
+        BACKUP_DIRS.includes(entry.name) ||
         targetFolders.includes(entry.name) ||
         shouldSkipFolder(entry.name, relativePath, excludedFolders)
       ) {
@@ -234,23 +235,25 @@ ipcMain.handle("asset-organizer:delete-backups", async (_event, payload = {}) =>
   if (!rootPath) throw new Error("rootPath is required");
 
   const rootAbsolute = path.resolve(rootPath);
-  const backupRoot = path.join(rootAbsolute, BACKUP_DIR);
-  assertInside(rootAbsolute, backupRoot, "backup path");
+  const deletedRoots = [];
 
-  try {
-    await fs.access(backupRoot);
-  } catch {
-    return {
-      deleted: false,
-      backupRoot,
-      backupRootRelative: BACKUP_DIR
-    };
+  for (const backupDir of BACKUP_DIRS) {
+    const backupRoot = path.join(rootAbsolute, backupDir);
+    assertInside(rootAbsolute, backupRoot, "backup path");
+
+    try {
+      await fs.access(backupRoot);
+    } catch {
+      continue;
+    }
+
+    await fs.rm(backupRoot, { recursive: true, force: true });
+    deletedRoots.push(backupDir);
   }
 
-  await fs.rm(backupRoot, { recursive: true, force: true });
   return {
-    deleted: true,
-    backupRoot,
-    backupRootRelative: BACKUP_DIR
+    deleted: deletedRoots.length > 0,
+    backupRoot: path.join(rootAbsolute, BACKUP_DIR),
+    backupRootRelative: deletedRoots.join(", ") || BACKUP_DIR
   };
 });

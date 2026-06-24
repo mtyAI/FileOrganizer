@@ -130,6 +130,8 @@ const COLUMN_MIN_WIDTHS = {
   include: 70
 };
 
+const BACKUP_FOLDER_NAMES = new Set(["_file-organizer-backup", "_asset-organizer-backup"]);
+
 const now = () => new Date().toLocaleTimeString("ja-JP", { hour12: false });
 const formatBytes = (bytes) => {
   if (!bytes) return "0 B";
@@ -172,7 +174,7 @@ async function collectFilesFromDirectory(directoryHandle, path = "", targetFolde
   for await (const [name, entry] of directoryHandle.entries()) {
     if (entry.kind === "directory") {
       const relativePath = `${path}${name}`;
-      if (targetFolders.has(name) || shouldSkipFolder(name, relativePath, excludedFolders)) continue;
+      if (BACKUP_FOLDER_NAMES.has(name) || targetFolders.has(name) || shouldSkipFolder(name, relativePath, excludedFolders)) continue;
       const children = await collectFilesFromDirectory(entry, `${relativePath}/`, targetFolders, excludedFolders);
       entries.push(...children);
       continue;
@@ -697,7 +699,7 @@ function App() {
   const deleteBackups = async () => {
     if (!isDesktopApp || !selectedFolderPath || busy) return;
     const ok = window.confirm(
-      "選択中フォルダ内の _asset-organizer-backup を削除します。バックアップは元に戻せません。実行しますか？"
+      "選択中フォルダ内の _file-organizer-backup を削除します。バックアップは元に戻せません。実行しますか？"
     );
     if (!ok) return;
 
@@ -725,7 +727,7 @@ function App() {
           <span className="brand-mark">
             <Folder size={19} />
           </span>
-          <span>素材整頓</span>
+          <span>FileOrganizer</span>
         </div>
 
         <section className="sidebar-section">
@@ -868,7 +870,7 @@ function App() {
         <section className="summary-grid">
           <Summary label="総ファイル数" value={files.length.toLocaleString()} />
           <Summary label="総サイズ" value={formatBytes(totalSize)} />
-          <Summary label="含めるファイル" value={includedFiles.length.toLocaleString()} detail={formatBytes(includedSize)} positive />
+          <Summary label="含めるファイル" value={includedFiles.length.toLocaleString()} positive />
           <Summary label="除外するファイル" value={excludedFiles.length.toLocaleString()} warning />
           <Summary label="重複グループ" value={`${duplicates.length.toLocaleString()} グループ`} warning={duplicates.length > 0} />
           <Summary label="状態" value={hasRealWrite ? "実行可能" : "フォルダ未選択"} detail={hasRealWrite ? "バックアップ対応" : "内容確認のみ"} />
@@ -1116,7 +1118,7 @@ function App() {
           </div>
           <div className="collapsible-content">
             <p>
-              保存先: _asset-organizer-backup
+              保存先: _file-organizer-backup
               <br />
               選択中フォルダ内のバックアップをまとめて削除します。
             </p>
