@@ -406,8 +406,7 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  padding: 22px 24px 14px;
-  border-bottom: 1px solid #e0e8e9;
+  padding: 24px 24px 20px;
   background: #ffffff;
 }
 
@@ -497,7 +496,7 @@ button:disabled {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
-  margin: 0 24px 18px;
+  margin: 18px 24px 18px;
 }
 
 .summary-card {
