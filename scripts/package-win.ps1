@@ -2,8 +2,8 @@ $ErrorActionPreference = "Stop"
 
 $workspace = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
 $release = Join-Path $workspace "release"
-$stamp = (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmss")
-$appDir = Join-Path $release "FileOrganizer-win-$stamp"
+$version = (& node -e "process.stdout.write(require('./package.json').version)")
+$appDir = Join-Path $release "FileOrganizer-win-v$version"
 $electronExe = (& node -e "process.stdout.write(require('electron'))")
 $electronDist = Split-Path -Parent $electronExe
 

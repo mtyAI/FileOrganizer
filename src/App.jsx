@@ -4,6 +4,8 @@ import {
   Archive,
   CheckCircle2,
   ChevronUp,
+  Circle,
+  CircleCheck,
   File,
   FileArchive,
   FileAudio,
@@ -20,6 +22,7 @@ import {
   RefreshCw,
   RotateCcw,
   Search,
+  Settings,
   Sun,
   Trash2,
   XCircle
@@ -270,13 +273,15 @@ function App() {
   const [lastOperations, setLastOperations] = useState([]);
   const [columnWidths, setColumnWidths] = useState(DEFAULT_COLUMN_WIDTHS);
   const [inspectorOpen, setInspectorOpen] = useState({
+    rules: false,
     duplicates: true,
     safety: true,
     logs: true,
     undo: true,
     backup: true
   });
-  const [theme, setTheme] = useState(() => window.localStorage?.getItem("fileOrganizerTheme") || "light");
+  const [viewMode, setViewMode] = useState("simple");
+  const [theme, setTheme] = useState(() => window.localStorage?.getItem("fileOrganizerTheme") || "dark");
   const [logs, setLogs] = useState([
     { time: now(), type: "info", message: "フォルダを選択してください" }
   ]);
@@ -324,6 +329,14 @@ function App() {
   const longPaths = plan.filter((file) => file.destination.length > 180);
   const invalidCategoryFolders = categories.filter((category) => category.enabled && !isSafeRelativeFolder(category.folder));
   const hasInvalidCategoryFolder = invalidCategoryFolders.length > 0;
+  const canRun = Boolean(includedFiles.length && hasRealWrite && !hasInvalidCategoryFolder);
+  const runDisabledReason = !hasRealWrite
+    ? "整理を実行するには、整理するフォルダを選択してください。"
+    : !includedFiles.length
+      ? "整理対象のファイルがありません。"
+      : hasInvalidCategoryFolder
+        ? "移動先フォルダ名を確認してください。"
+        : "整理内容を確認して実行できます。";
   const previewColumns = [
     { key: "select", label: "", width: columnWidths.select },
     { key: "name", label: "ファイル名", width: columnWidths.name, resizable: true },
@@ -719,7 +732,7 @@ function App() {
 
   return (
     <div className={`app-shell theme-${theme}`}>
-      <aside className="sidebar">
+      <header className="app-header">
         <div className="brand">
           <span className="brand-title">
             <span className="brand-mark">
@@ -727,8 +740,19 @@ function App() {
             </span>
             <span>FileOrganizer</span>
           </span>
+        </div>
+        <div className="header-actions">
+          <span className="mode-label">表示モード</span>
+          <div className="mode-switch" aria-label="表示モード">
+            <button className={viewMode === "simple" ? "active" : ""} type="button" onClick={() => setViewMode("simple")}>
+              シンプル
+            </button>
+            <button className={viewMode === "detail" ? "active" : ""} type="button" onClick={() => setViewMode("detail")}>
+              詳細
+            </button>
+          </div>
           <button
-            className="theme-toggle"
+            className="icon-button"
             type="button"
             onClick={toggleTheme}
             aria-label={theme === "dark" ? "ライトモードに切り替え" : "ダークモードに切り替え"}
@@ -736,384 +760,351 @@ function App() {
           >
             {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
           </button>
+          <button className="ghost-action" type="button" onClick={() => setInspectorOpen((current) => ({ ...current, rules: !current.rules }))}>
+            <Settings size={16} />
+            設定
+          </button>
+          <button className="ghost-action" type="button" onClick={() => addLog("info", "ヘルプ: 1. フォルダ選択 2. 保存先確認 3. 整理を実行")}>
+            <Circle size={16} />
+            ヘルプ
+          </button>
         </div>
+      </header>
 
-        <section className="sidebar-section">
-          <h2>選択中のフォルダ</h2>
-          <div className="folder-box">
-            <div className="folder-row">
-              <FolderOpen size={22} />
-              <strong>{selectedFolderName}</strong>
+      <main className="main-stage">
+        <section className="workflow-card">
+          <div className="stepper">
+            <div className={`step-item ${hasRealWrite ? "done" : "active"}`}>
+              <span>{hasRealWrite ? <CheckCircle2 size={18} /> : "1"}</span>
+              <div>
+                <strong>フォルダを選択</strong>
+                <small>整理するフォルダを選びます</small>
+              </div>
             </div>
-            <p>
-              {files.length.toLocaleString()} ファイル / {formatBytes(totalSize)}
-            </p>
-            <button className="outline-button full" onClick={() => scanWithDirectoryPicker()} disabled={busy}>
-              <FolderOpen size={15} />
-              フォルダを選択
-            </button>
-            <input
-              ref={inputRef}
-              className="hidden-input"
-              type="file"
-              multiple
-              webkitdirectory=""
-              onChange={loadFilesFromInput}
-            />
+            <ChevronUp className="step-arrow" size={18} />
+            <div className={`step-item ${hasCustomOutputRoot || hasRealWrite ? "done" : ""}`}>
+              <span>2</span>
+              <div>
+                <strong>出力先を選択</strong>
+                <small>保存先を確認します</small>
+              </div>
+            </div>
+            <ChevronUp className="step-arrow" size={18} />
+            <div className={`step-item ${canRun ? "active" : ""}`}>
+              <span>3</span>
+              <div>
+                <strong>内容を確認して実行</strong>
+                <small>プレビュー後に整理します</small>
+              </div>
+            </div>
           </div>
-        </section>
 
-        <section className="sidebar-section">
-          <h2>出力先フォルダ</h2>
-          <div className="folder-box">
-            <div className="folder-row">
-              <FolderOpen size={22} />
-              <strong>{outputDestinationName}</strong>
+          <div className="workflow-body">
+            <div className="workflow-main">
+              <div className="selection-grid">
+                <section className="selection-card">
+                  <div>
+                    <h2>整理するフォルダ</h2>
+                    <p>選択フォルダ直下のファイルだけを整理します。</p>
+                  </div>
+                  <div className="selected-folder-line">
+                    <span className="large-icon"><FolderOpen size={28} /></span>
+                    <div>
+                      <strong>{hasRealWrite ? selectedFolderName : "未選択"}</strong>
+                      <small>{hasRealWrite ? `${files.length.toLocaleString()} ファイル / ${formatBytes(totalSize)}` : "フォルダを選択してください"}</small>
+                    </div>
+                    <button className="outline-button" onClick={() => scanWithDirectoryPicker()} disabled={busy}>
+                      <FolderOpen size={15} />
+                      フォルダを選択
+                    </button>
+                    <input
+                      ref={inputRef}
+                      className="hidden-input"
+                      type="file"
+                      multiple
+                      webkitdirectory=""
+                      onChange={loadFilesFromInput}
+                    />
+                  </div>
+                </section>
+
+                <section className="selection-card">
+                  <div>
+                    <h2>保存先（出力先）</h2>
+                    <p>未指定時は整理するフォルダを保存先にします。</p>
+                  </div>
+                  <div className="selected-folder-line">
+                    <span className="large-icon"><Folder size={28} /></span>
+                    <div>
+                      <strong>{hasCustomOutputRoot ? outputDestinationName : hasRealWrite ? "整理するフォルダ内" : "未選択"}</strong>
+                      <small>{outputDestinationDetail}</small>
+                    </div>
+                    <button className="outline-button" onClick={selectOutputFolder} disabled={busy}>
+                      <FolderOpen size={15} />
+                      出力先を選択
+                    </button>
+                  </div>
+                  {(outputFolderPath || outputRootHandle) && (
+                    <button className="text-button compact" onClick={resetOutputFolder} disabled={busy}>
+                      選択中フォルダに戻す
+                    </button>
+                  )}
+                </section>
+              </div>
+
+              <div className="metric-grid">
+                <Metric icon={<FileText size={22} />} label="総ファイル数" value={files.length.toLocaleString()} detail="ファイル" tone="blue" />
+                <Metric icon={<CircleCheck size={22} />} label="整理対象" value={includedFiles.length.toLocaleString()} detail="ファイル" tone="green" />
+                <Metric icon={<XCircle size={22} />} label="除外" value={excludedFiles.length.toLocaleString()} detail="ファイル" tone="orange" />
+                <Metric icon={<FileCode2 size={22} />} label="重複ファイル" value={duplicateCount.toLocaleString()} detail="ファイル" tone="purple" />
+              </div>
             </div>
-            <p>
-              <span className="root-mode">{hasCustomOutputRoot ? "指定ルート" : "既定ルート"}</span>
-              {hasCustomOutputRoot ? "指定したフォルダを出力先ルートにします。" : "未指定時は選択中のフォルダを出力先ルートにします。"}
-              <small>{outputDestinationDetail}</small>
-            </p>
-            <button className="outline-button full" onClick={selectOutputFolder} disabled={busy}>
-              <FolderOpen size={15} />
-              出力先を選択
-            </button>
-            {(outputFolderPath || outputRootHandle) && (
-              <button className="text-button full" onClick={resetOutputFolder} disabled={busy}>
-                選択中フォルダに戻す
+
+            <aside className="action-panel">
+              <button className="primary-button execute-button" onClick={runPlan} disabled={busy || !canRun}>
+                {busy ? <Loader2 className="spin" size={20} /> : <Play size={20} />}
+                整理を実行
               </button>
-            )}
+              <p>{runDisabledReason}</p>
+              <button className="outline-button full" onClick={() => scanCurrentFolder()} disabled={busy}>
+                <RefreshCw size={17} />
+                再スキャン
+              </button>
+
+              <section className="check-panel">
+                <div className="panel-title-row">
+                  <strong>実行前チェック</strong>
+                  <span>{canRun ? "OK" : "未チェック"}</span>
+                </div>
+                <CheckItem ok={includedFiles.length > 0} label="整理対象が選択済み" />
+                <CheckItem ok={hasRealWrite} warn={!hasRealWrite} label={hasRealWrite ? "整理するフォルダOK" : "フォルダ未選択"} />
+                <CheckItem ok={!hasInvalidCategoryFolder} warn={hasInvalidCategoryFolder} label={hasInvalidCategoryFolder ? `移動先フォルダ名: ${invalidCategoryFolders.length}件` : "移動先フォルダ名OK"} />
+                <CheckItem ok label="バックアップ準備" />
+                <CheckItem ok label="Undo準備" />
+              </section>
+            </aside>
           </div>
+
+          <section className="preview-panel">
+            <div className="panel-heading">
+              <div>
+                <h2>整理プレビュー</h2>
+                <p>実行前に、どのファイルがどこに移動されるか確認できます。</p>
+              </div>
+            </div>
+
+            <div className="toolbar">
+              <div className="segmented">
+                <button className={activeView === "all" ? "active" : ""} onClick={() => setActiveView("all")}>
+                  すべて
+                </button>
+                <button className={activeView === "included" ? "active" : ""} onClick={() => setActiveView("included")}>
+                  整理対象
+                </button>
+                <button className={activeView === "excluded" ? "active" : ""} onClick={() => setActiveView("excluded")}>
+                  除外
+                </button>
+                <button className={activeView === "duplicate" ? "active" : ""} onClick={() => setActiveView("duplicate")}>
+                  重複
+                </button>
+              </div>
+              <label className="search-field">
+                <Search size={16} />
+                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ファイル名・拡張子で検索" />
+              </label>
+              <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
+                <option value="all">すべてのカテゴリ</option>
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.label}
+                  </option>
+                ))}
+              </select>
+              <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+                <option value="all">すべての結果</option>
+                <option value="included">整理対象</option>
+                <option value="excluded">除外</option>
+                <option value="duplicate">重複</option>
+              </select>
+            </div>
+
+            <div className="table-wrap">
+              <table style={{ width: `max(100%, ${previewTableWidth}px)` }}>
+                <colgroup>
+                  {previewColumns.map((column) => (
+                    <col key={column.key} style={{ width: `${column.width}px` }} />
+                  ))}
+                </colgroup>
+                <thead>
+                  <tr>
+                    {previewColumns.map((column) => (
+                      <th key={column.key} className={column.resizable ? "resizable-column" : ""}>
+                        {column.key === "select" ? (
+                          <input
+                            type="checkbox"
+                            checked={includedFiles.length > 0 && includedFiles.length === plan.filter((file) => file.category).length}
+                            onChange={(event) => setAllIncluded(event.target.checked)}
+                          />
+                        ) : (
+                          <span>{column.label}</span>
+                        )}
+                        {column.resizable && (
+                          <button
+                            className="column-resizer"
+                            type="button"
+                            onPointerDown={(event) => startColumnResize(column.key, event)}
+                            aria-label={`${column.label}の列幅を変更`}
+                          />
+                        )}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredPlan.map((file) => {
+                    const Icon = CATEGORY_ICONS[file.category?.icon] ?? File;
+                    const isDuplicate = duplicateIdSet.has(file.id);
+                    return (
+                      <tr key={file.id} className={!file.included ? "muted-row" : ""}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={file.included}
+                            disabled={!file.category}
+                            onChange={() => toggleIncluded(file.id)}
+                          />
+                        </td>
+                        <td>
+                          <div className="file-cell">
+                            <Icon size={19} />
+                            <span>
+                              <strong>{file.name}</strong>
+                              <small>{formatBytes(file.size)}</small>
+                            </span>
+                          </div>
+                        </td>
+                        <td className="path-cell">{file.folderPath}</td>
+                        <td className="path-cell">{file.destination}</td>
+                        <td>
+                          {file.category ? (
+                            <span className={`tag ${file.category.tone}`}>{file.category.label}</span>
+                          ) : (
+                            <span className="tag neutral">対象外</span>
+                          )}
+                        </td>
+                        <td>
+                          {isDuplicate ? (
+                            <span className="duplicate">
+                              <AlertTriangle size={14} />
+                              重複
+                            </span>
+                          ) : (
+                            <span className="dash">-</span>
+                          )}
+                        </td>
+                        <td>
+                          <button
+                            className={`switch ${file.included ? "on" : ""}`}
+                            disabled={!file.category}
+                            onClick={() => toggleIncluded(file.id)}
+                            aria-label={`${file.name}を整理する`}
+                          >
+                            <span />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {filteredPlan.length === 0 && (
+                <div className="empty-preview">
+                  <FolderOpen size={34} />
+                  <strong>フォルダを選択してスキャンしてください</strong>
+                  <span>整理するフォルダを選択すると、ここにプレビューが表示されます。</span>
+                </div>
+              )}
+            </div>
+
+            <div className="action-bar">
+              <span>{filteredPlan.length.toLocaleString()} 件中 {includedFiles.length.toLocaleString()} 件を表示</span>
+              <span className="positive">整理対象: {includedFiles.length.toLocaleString()} 件</span>
+              <span className="danger">除外: {excludedFiles.length.toLocaleString()} 件</span>
+              <button className="outline-button" onClick={() => setAllIncluded(false)}>
+                <Trash2 size={16} />
+                全て除外
+              </button>
+            </div>
+          </section>
         </section>
 
-        <section className="sidebar-section">
-          <h2>整理対象</h2>
-          <div className="folder-box">
-            <p>
-              選択したフォルダ直下のファイルだけを整理します。
-              <small>サブフォルダ内のファイルは自動で対象外です。</small>
-            </p>
-          </div>
-        </section>
-
-        <section className="sidebar-section categories-section">
-          <h2>分類カテゴリ</h2>
-          <div className="preset-actions">
-            <button className="mini-button" onClick={() => setAllCategories(true)} disabled={busy}>
-              全選択
-            </button>
-            <button className="mini-button" onClick={() => setAllCategories(false)} disabled={busy}>
-              全解除
-            </button>
-          </div>
-          <div className="preset-list">
-            {categories.map((category) => {
-              const Icon = CATEGORY_ICONS[category.icon] ?? File;
-              return (
-                <div
-                  key={category.id}
-                  className={`preset-item ${category.enabled ? "selected" : ""}`}
-                >
-                  <button className="preset-button" type="button" onClick={() => toggleCategory(category.id)}>
-                    <Icon size={18} />
-                    <span>
+        <section className={`detail-drawer ${viewMode === "detail" ? "always-open" : ""}`}>
+          <DetailPanel title="詳細設定" subtitle="分類ルール・移動先フォルダ名を調整します" icon={<Settings size={18} />} open={viewMode === "detail" || inspectorOpen.rules} onToggle={() => toggleInspectorSection("rules")}>
+            <div className="rule-actions">
+              <button className="mini-button" onClick={() => setAllCategories(true)} disabled={busy}>全選択</button>
+              <button className="mini-button" onClick={() => setAllCategories(false)} disabled={busy}>全解除</button>
+            </div>
+            <div className="rules-table">
+              {categories.map((category) => {
+                const Icon = CATEGORY_ICONS[category.icon] ?? File;
+                return (
+                  <div className="rule-row" key={category.id}>
+                    <label>
+                      <input type="checkbox" checked={category.enabled} onChange={() => toggleCategory(category.id)} disabled={busy} />
+                      <Icon size={17} />
                       <strong>{category.label}</strong>
-                      <small>{category.extensions.slice(0, 4).join(", ")}</small>
-                    </span>
-                  </button>
-                  <label className="folder-name-field">
-                    <span>移動先フォルダ名</span>
+                    </label>
+                    <span>{category.extensions.slice(0, 5).join(", ")}</span>
                     <input
                       value={category.folder}
                       onChange={(event) => updateCategoryFolder(category.id, event.target.value)}
                       onBlur={() => normalizeCategoryFolder(category.id)}
                       aria-invalid={category.enabled && !isSafeRelativeFolder(category.folder)}
-                      placeholder="例: 01_動画"
                       disabled={busy}
                     />
-                    {category.enabled && !isSafeRelativeFolder(category.folder) && (
-                      <em>空欄、絶対パス、.. は使えません。</em>
-                    )}
-                  </label>
+                  </div>
+                );
+              })}
+            </div>
+          </DetailPanel>
+
+          <DetailPanel title="重複グループ" subtitle={`${duplicates.length.toLocaleString()} グループ`} icon={<FileImage size={18} />} open={viewMode === "detail" || inspectorOpen.duplicates} onToggle={() => toggleInspectorSection("duplicates")}>
+            <div className="duplicate-list">
+              {duplicates.slice(0, 4).map((group) => (
+                <div className="duplicate-card" key={`${group[0].name}:${group[0].size}`}>
+                  <FileImage size={18} />
+                  <span>
+                    <strong>{group[0].name}</strong>
+                    <small>{formatBytes(group[0].size)} / {group.length} ファイル</small>
+                  </span>
+                  <AlertTriangle size={16} />
                 </div>
-              );
-            })}
-          </div>
-        </section>
-      </aside>
-
-      <main className="workspace">
-        <header className="topbar">
-          <div>
-            <h1>整理プレビュー</h1>
-            <p>フォルダ内の素材を分類し、移動先を実行前に確認できます。</p>
-          </div>
-          <div className="topbar-actions">
-            <button className="primary-button" onClick={() => scanCurrentFolder()} disabled={busy}>
-              {busy ? <Loader2 className="spin" size={17} /> : <RefreshCw size={17} />}
-              再スキャン
-            </button>
-          </div>
-        </header>
-
-        <section className="summary-grid">
-          <Summary label="総ファイル数" value={files.length.toLocaleString()} />
-          <Summary label="総サイズ" value={formatBytes(totalSize)} />
-          <Summary label="含めるファイル" value={includedFiles.length.toLocaleString()} positive />
-          <Summary label="除外するファイル" value={excludedFiles.length.toLocaleString()} warning />
-          <Summary label="重複グループ" value={`${duplicates.length.toLocaleString()} グループ`} warning={duplicates.length > 0} />
-          <Summary label="出力先ルート" value={outputRootSummary} detail={outputDestinationName} />
-          <Summary label="状態" value={hasRealWrite ? "実行可能" : "フォルダ未選択"} detail={hasRealWrite ? "バックアップ対応" : "内容確認のみ"} />
-        </section>
-
-        <section className="preview-panel">
-          <div className="panel-heading">
-            <div>
-              <h2>移動前プレビュー</h2>
-              <p>実行前に、どのファイルがどこに移動されるか確認できます。</p>
-            </div>
-          </div>
-
-          <div className="toolbar">
-            <div className="segmented">
-              <button className={activeView === "all" ? "active" : ""} onClick={() => setActiveView("all")}>
-                すべて
-              </button>
-              <button className={activeView === "included" ? "active" : ""} onClick={() => setActiveView("included")}>
-                含める
-              </button>
-              <button className={activeView === "excluded" ? "active" : ""} onClick={() => setActiveView("excluded")}>
-                除外する
-              </button>
-              <button className={activeView === "duplicate" ? "active" : ""} onClick={() => setActiveView("duplicate")}>
-                重複あり
-              </button>
-            </div>
-            <label className="search-field">
-              <Search size={16} />
-              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ファイル名・拡張子で検索" />
-            </label>
-            <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
-              <option value="all">すべてのカテゴリ</option>
-              {categories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.label}
-                </option>
               ))}
-            </select>
-            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-              <option value="all">すべての結果</option>
-              <option value="included">含める</option>
-              <option value="excluded">除外する</option>
-              <option value="duplicate">重複</option>
-            </select>
-          </div>
+              {duplicates.length === 0 && <p className="empty-copy">重複候補はありません。</p>}
+            </div>
+          </DetailPanel>
 
-          <div className="table-wrap">
-            <table style={{ width: `max(100%, ${previewTableWidth}px)` }}>
-              <colgroup>
-                {previewColumns.map((column) => (
-                  <col key={column.key} style={{ width: `${column.width}px` }} />
-                ))}
-              </colgroup>
-              <thead>
-                <tr>
-                  {previewColumns.map((column) => (
-                    <th key={column.key} className={column.resizable ? "resizable-column" : ""}>
-                      {column.key === "select" ? (
-                        <input
-                          type="checkbox"
-                          checked={includedFiles.length > 0 && includedFiles.length === plan.filter((file) => file.category).length}
-                          onChange={(event) => setAllIncluded(event.target.checked)}
-                        />
-                      ) : (
-                        <span>{column.label}</span>
-                      )}
-                      {column.resizable && (
-                        <button
-                          className="column-resizer"
-                          type="button"
-                          onPointerDown={(event) => startColumnResize(column.key, event)}
-                          aria-label={`${column.label}の列幅を変更`}
-                        />
-                      )}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filteredPlan.map((file) => {
-                  const Icon = CATEGORY_ICONS[file.category?.icon] ?? File;
-                  const isDuplicate = duplicateIdSet.has(file.id);
-                  return (
-                    <tr key={file.id} className={!file.included ? "muted-row" : ""}>
-                      <td>
-                        <input
-                          type="checkbox"
-                          checked={file.included}
-                          disabled={!file.category}
-                          onChange={() => toggleIncluded(file.id)}
-                        />
-                      </td>
-                      <td>
-                        <div className="file-cell">
-                          <Icon size={19} />
-                          <span>
-                            <strong>{file.name}</strong>
-                            <small>{formatBytes(file.size)}</small>
-                          </span>
-                        </div>
-                      </td>
-                      <td className="path-cell">{file.folderPath}</td>
-                      <td className="path-cell">{file.destination}</td>
-                      <td>
-                        {file.category ? (
-                          <span className={`tag ${file.category.tone}`}>{file.category.label}</span>
-                        ) : (
-                          <span className="tag neutral">対象外</span>
-                        )}
-                      </td>
-                      <td>
-                        {isDuplicate ? (
-                          <span className="duplicate">
-                            <AlertTriangle size={14} />
-                            重複
-                          </span>
-                        ) : (
-                          <span className="dash">-</span>
-                        )}
-                      </td>
-                      <td>
-                        <button
-                          className={`switch ${file.included ? "on" : ""}`}
-                          disabled={!file.category}
-                          onClick={() => toggleIncluded(file.id)}
-                          aria-label={`${file.name}を含める`}
-                        >
-                          <span />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <DetailPanel title="ログ" subtitle="実行結果と操作履歴" icon={<FileText size={18} />} open={viewMode === "detail" || inspectorOpen.logs} onToggle={() => toggleInspectorSection("logs")}>
+            <button className="text-button small" onClick={() => setLogs([])}>クリア</button>
+            <div className="log-list">
+              {logs.map((log, index) => (
+                <div className="log-row" key={`${log.time}-${index}`}>
+                  <span className="log-time">{log.time}</span>
+                  <span className={`log-message ${log.type}`}>{log.message}</span>
+                </div>
+              ))}
+            </div>
+          </DetailPanel>
 
-          <div className="action-bar">
-            <span className="positive">{includedFiles.length.toLocaleString()} 件を含める（{formatBytes(includedSize)}）</span>
-            <span className="danger">{excludedFiles.length.toLocaleString()} 件を除外する</span>
-            <span>選択中: {includedFiles.length.toLocaleString()} 件</span>
-            <button className="outline-button" onClick={() => setAllIncluded(false)}>
-              <Trash2 size={16} />
-              全て除外
-            </button>
-            <button className="primary-button run" onClick={runPlan} disabled={busy || !includedFiles.length || !hasRealWrite}>
-              {busy ? <Loader2 className="spin" size={18} /> : <Play size={18} />}
-              実行
-            </button>
-          </div>
-        </section>
-      </main>
-
-      <aside className="inspector">
-        <section className={`inspector-section collapsible-panel ${inspectorOpen.duplicates ? "" : "collapsed"}`}>
-          <div className="inspector-title">
-            <button className="inspector-heading-button" type="button" onClick={() => toggleInspectorSection("duplicates")}>
-              <span className="inspector-heading-text">重複グループ</span>
-              <span className="inspector-count">{duplicates.length}</span>
-              <ChevronUp size={16} />
-            </button>
-          </div>
-          <div className="collapsible-content duplicate-list">
-            {duplicates.slice(0, 4).map((group) => (
-              <div className="duplicate-card" key={`${group[0].name}:${group[0].size}`}>
-                <FileImage size={18} />
-                <span>
-                  <strong>{group[0].name}</strong>
-                  <small>
-                    {formatBytes(group[0].size)} / {group.length} ファイル
-                  </small>
-                </span>
-                <AlertTriangle size={16} />
-              </div>
-            ))}
-            {duplicates.length === 0 && <p className="empty-copy">重複候補はありません。</p>}
-          </div>
-        </section>
-
-        <section className={`inspector-section collapsible-panel ${inspectorOpen.safety ? "" : "collapsed"}`}>
-          <div className="inspector-title">
-            <button className="inspector-heading-button" type="button" onClick={() => toggleInspectorSection("safety")}>
-              <span className="inspector-heading-text">実行前の安全チェック</span>
-              <ChevronUp size={16} />
-            </button>
-          </div>
-          <div className="collapsible-content">
-            <CheckItem ok={includedFiles.length > 0} label="移動対象が選択済み" />
-            <CheckItem ok={hasRealWrite} warn={!hasRealWrite} label={hasRealWrite ? "フォルダの書き込み権限" : "フォルダ未選択"} />
-            <CheckItem ok={!hasInvalidCategoryFolder} warn={hasInvalidCategoryFolder} label={hasInvalidCategoryFolder ? `移動先フォルダ名: ${invalidCategoryFolders.length}件要確認` : "移動先フォルダ名OK"} />
-            <CheckItem ok={longPaths.length === 0} warn={longPaths.length > 0} label={`長すぎるパス: ${longPaths.length} 件`} />
-            <CheckItem ok={duplicates.length === 0} warn={duplicates.length > 0} label={`重複候補: ${duplicateCount} 件`} />
-            <CheckItem ok label="バックアップ準備" />
-            <CheckItem ok label="Undo準備" />
-          </div>
-        </section>
-
-        <section className={`inspector-section collapsible-panel log-section ${inspectorOpen.logs ? "" : "collapsed"}`}>
-          <div className="inspector-title">
-            <button className="inspector-heading-button" type="button" onClick={() => toggleInspectorSection("logs")}>
-              <span className="inspector-heading-text">ログ</span>
-              <ChevronUp size={16} />
-            </button>
-            <button className="text-button small" onClick={() => setLogs([])}>
-              クリア
-            </button>
-          </div>
-          <div className="collapsible-content log-list">
-            {logs.map((log, index) => (
-              <div className="log-row" key={`${log.time}-${index}`}>
-                <span className="log-time">{log.time}</span>
-                <span className={`log-message ${log.type}`}>{log.message}</span>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className={`undo-box collapsible-panel ${inspectorOpen.undo ? "" : "collapsed"}`}>
-          <div className="inspector-title">
-            <button className="inspector-heading-button" type="button" onClick={() => toggleInspectorSection("undo")}>
-              <span className="inspector-heading-text">Undo（取り消し）</span>
-              <ChevronUp size={16} />
-            </button>
-          </div>
-          <div className="collapsible-content">
-            <p>
-              最後の実行: {lastOperations.length ? `${lastOperations.length.toLocaleString()} 件` : "なし"}
-              <br />
-              {lastOperations.length ? "実ファイルを元の場所へ戻します。" : "直前の実行はありません。"}
-            </p>
+          <DetailPanel title="Undo（取り消し）" subtitle={lastOperations.length ? `${lastOperations.length.toLocaleString()} 件を戻せます` : "直前の実行はありません"} icon={<RotateCcw size={18} />} open={viewMode === "detail" || inspectorOpen.undo} onToggle={() => toggleInspectorSection("undo")}>
             <button className="outline-button full undo" onClick={undoLastRun} disabled={busy || !lastOperations.length}>
               <RotateCcw size={18} />
               Undo
             </button>
-          </div>
-        </section>
+          </DetailPanel>
 
-        <section className={`undo-box collapsible-panel ${inspectorOpen.backup ? "" : "collapsed"}`}>
-          <div className="inspector-title">
-            <button className="inspector-heading-button" type="button" onClick={() => toggleInspectorSection("backup")}>
-              <span className="inspector-heading-text">バックアップ</span>
-              <ChevronUp size={16} />
-            </button>
-          </div>
-          <div className="collapsible-content">
-            <p>
-              保存先: _file-organizer-backup
-              <br />
-              選択中フォルダ内のバックアップをまとめて削除します。
-            </p>
+          <DetailPanel title="バックアップ" subtitle="選択中フォルダ内のバックアップを管理します" icon={<Archive size={18} />} open={viewMode === "detail" || inspectorOpen.backup} onToggle={() => toggleInspectorSection("backup")}>
+            <p className="detail-copy">保存先: _file-organizer-backup</p>
             <button
               className="outline-button full danger-outline"
               onClick={deleteBackups}
@@ -1122,20 +1113,39 @@ function App() {
               <Trash2 size={18} />
               バックアップを削除
             </button>
-          </div>
+          </DetailPanel>
         </section>
-      </aside>
+      </main>
     </div>
   );
 }
 
-function Summary({ label, value, detail, positive, warning }) {
+function Metric({ icon, label, value, detail, tone }) {
   return (
-    <div className="summary-card">
-      <span>{label}</span>
-      <strong className={positive ? "positive" : warning ? "warning" : ""}>{value}</strong>
-      {detail && <small>{detail}</small>}
+    <div className={`metric-card ${tone}`}>
+      <span className="metric-icon">{icon}</span>
+      <div>
+        <span>{label}</span>
+        <strong>{value}</strong>
+        {detail && <small>{detail}</small>}
+      </div>
     </div>
+  );
+}
+
+function DetailPanel({ title, subtitle, icon, open, onToggle, children }) {
+  return (
+    <section className={`detail-panel ${open ? "open" : "collapsed"}`}>
+      <button className="detail-trigger" type="button" onClick={onToggle}>
+        <span className="detail-icon">{icon}</span>
+        <span>
+          <strong>{title}</strong>
+          {subtitle && <small>{subtitle}</small>}
+        </span>
+        <ChevronUp size={17} />
+      </button>
+      {open && <div className="detail-content">{children}</div>}
+    </section>
   );
 }
 
