@@ -124,35 +124,13 @@ function toRelative(rootPath, filePath) {
   return path.relative(rootPath, filePath).split(path.sep).join("/");
 }
 
-function normalizeFolderPattern(value) {
-  return String(value ?? "").trim().replaceAll("\\", "/").replace(/^\/+|\/+$/g, "");
-}
-
-function shouldSkipFolder(folderName, relativePath, excludedFolders) {
-  const normalizedName = folderName.toLowerCase();
-  const normalizedPath = normalizeFolderPattern(relativePath).toLowerCase();
-  return excludedFolders.some((folder) => {
-    const pattern = normalizeFolderPattern(folder).toLowerCase();
-    return pattern && (pattern === normalizedName || pattern === normalizedPath);
-  });
-}
-
-async function scanDirectory(rootPath, targetFolders, excludedFolders = [], currentPath = rootPath) {
-  const entries = await fs.readdir(currentPath, { withFileTypes: true });
+async function scanDirectory(rootPath) {
+  const entries = await fs.readdir(rootPath, { withFileTypes: true });
   const files = [];
 
   for (const entry of entries) {
-    const absolutePath = path.join(currentPath, entry.name);
+    const absolutePath = path.join(rootPath, entry.name);
     if (entry.isDirectory()) {
-      const relativePath = toRelative(rootPath, absolutePath);
-      if (
-        BACKUP_DIRS.includes(entry.name) ||
-        shouldSkipFolder(entry.name, relativePath, targetFolders) ||
-        shouldSkipFolder(entry.name, relativePath, excludedFolders)
-      ) {
-        continue;
-      }
-      files.push(...(await scanDirectory(rootPath, targetFolders, excludedFolders, absolutePath)));
       continue;
     }
 
@@ -235,7 +213,7 @@ ipcMain.handle("asset-organizer:select-folder", async (_event, options = {}) => 
   if (result.canceled || !result.filePaths[0]) return { canceled: true };
 
   const rootPath = result.filePaths[0];
-  const files = await scanDirectory(rootPath, options.targetFolders ?? [], options.excludedFolders ?? []);
+  const files = await scanDirectory(rootPath);
   return {
     canceled: false,
     rootPath,
@@ -263,7 +241,7 @@ ipcMain.handle("asset-organizer:select-output-folder", async () => {
 ipcMain.handle("asset-organizer:scan-folder", async (_event, options = {}) => {
   if (!options.rootPath) throw new Error("rootPath is required");
   const rootPath = path.resolve(options.rootPath);
-  const files = await scanDirectory(rootPath, options.targetFolders ?? [], options.excludedFolders ?? []);
+  const files = await scanDirectory(rootPath);
   return {
     rootPath,
     folderName: path.basename(rootPath),

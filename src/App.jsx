@@ -163,42 +163,23 @@ const isSafeRelativeFolder = (value) => {
   return normalized.split("/").every((part) => part && part !== "." && part !== "..");
 };
 
-function shouldSkipFolder(folderName, relativePath, excludedFolders) {
-  const normalizedName = folderName.toLowerCase();
-  const normalizedPath = normalizeFolderPattern(relativePath).toLowerCase();
-  return [...excludedFolders].some((folder) => {
-    const pattern = normalizeFolderPattern(folder).toLowerCase();
-    return pattern && (pattern === normalizedName || pattern === normalizedPath);
-  });
-}
-
 function classify(file, categories) {
   const ext = getExt(file.name);
   return categories.find((category) => category.enabled && category.extensions.includes(ext)) ?? null;
 }
 
-async function collectFilesFromDirectory(directoryHandle, path = "", targetFolders = new Set(), excludedFolders = new Set()) {
+async function collectFilesFromDirectory(directoryHandle) {
   const entries = [];
   for await (const [name, entry] of directoryHandle.entries()) {
     if (entry.kind === "directory") {
-      const relativePath = `${path}${name}`;
-      if (
-        BACKUP_FOLDER_NAMES.has(name) ||
-        shouldSkipFolder(name, relativePath, targetFolders) ||
-        shouldSkipFolder(name, relativePath, excludedFolders)
-      ) {
-        continue;
-      }
-      const children = await collectFilesFromDirectory(entry, `${relativePath}/`, targetFolders, excludedFolders);
-      entries.push(...children);
       continue;
     }
     const file = await entry.getFile();
     entries.push({
-      id: makeFileId(`${path}${name}`, file.size, file.lastModified),
+      id: makeFileId(name, file.size, file.lastModified),
       name,
-      folderPath: path || "/",
-      currentPath: `${path}${name}`,
+      folderPath: "/",
+      currentPath: name,
       size: file.size,
       lastModified: file.lastModified,
       ext: getExt(name),
@@ -247,47 +228,6 @@ function duplicateGroups(files) {
   return [...groups.values()].filter((group) => group.length > 1);
 }
 
-function buildDetectedFolders(files, categories, excludedFolders) {
-  const groups = new Map();
-  const detectionCategories = categories.map((category) => ({ ...category, enabled: true }));
-  for (const file of files) {
-    const folderPath = normalizeFolderPattern(file.folderPath || "");
-    if (!folderPath) continue;
-    const folderName = folderPath.split("/").at(-1);
-    if (shouldSkipFolder(folderName, folderPath, new Set(excludedFolders))) continue;
-
-    const category = classify(file, detectionCategories);
-    const current = groups.get(folderPath) ?? {
-      path: folderPath,
-      name: folderName,
-      count: 0,
-      size: 0,
-      categoryCounts: new Map()
-    };
-    current.count += 1;
-    current.size += file.size;
-    if (category) {
-      current.categoryCounts.set(category.id, (current.categoryCounts.get(category.id) ?? 0) + 1);
-    }
-    groups.set(folderPath, current);
-  }
-
-  return [...groups.values()]
-    .map((folder) => {
-      const [categoryId] = [...folder.categoryCounts.entries()].sort((a, b) => b[1] - a[1])[0] ?? [];
-      const category = categories.find((item) => item.id === categoryId) ?? null;
-      return {
-        ...folder,
-        category,
-        categoryCounts: undefined
-      };
-    })
-    .sort((a, b) => {
-      if (b.count !== a.count) return b.count - a.count;
-      return a.path.localeCompare(b.path, "ja");
-    });
-}
-
 function folderLabel(handle, fallback) {
   return handle?.name ? handle.name : fallback || "未選択";
 }
@@ -322,9 +262,6 @@ function App() {
   const [outputFolderPath, setOutputFolderPath] = useState("");
   const [outputFolderName, setOutputFolderName] = useState("選択中フォルダを使用");
   const [includeMap, setIncludeMap] = useState({});
-  const [excludedFolders, setExcludedFolders] = useState([]);
-  const [excludeInput, setExcludeInput] = useState("");
-  const [folderCategoryFilter, setFolderCategoryFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -347,17 +284,6 @@ function App() {
   const plan = useMemo(() => buildPlan(files, categories, includeMap), [files, categories, includeMap]);
   const duplicates = useMemo(() => duplicateGroups(files), [files]);
   const duplicateIdSet = useMemo(() => new Set(duplicates.flat().map((file) => file.id)), [duplicates]);
-  const detectedFolders = useMemo(
-    () => buildDetectedFolders(files, categories, excludedFolders),
-    [categories, excludedFolders, files]
-  );
-  const visibleDetectedFolders = useMemo(
-    () =>
-      detectedFolders
-        .filter((folder) => folderCategoryFilter === "all" || folder.category?.id === folderCategoryFilter)
-        .slice(0, 6),
-    [detectedFolders, folderCategoryFilter]
-  );
   const filteredPlan = useMemo(() => {
     return plan.filter((file) => {
       const textMatch =
@@ -463,17 +389,15 @@ function App() {
     setLastOperations([]);
   };
 
-  const scanCurrentFolder = async (nextExcludedFolders = excludedFolders, nextCategories = categories) => {
+  const scanCurrentFolder = async (nextCategories = categories) => {
     if (isDesktopApp && selectedFolderPath) {
       try {
         setBusy(true);
         const result = await window.assetOrganizer.scanFolder({
-          rootPath: selectedFolderPath,
-          targetFolders: nextCategories.map((category) => category.folder),
-          excludedFolders: nextExcludedFolders
+          rootPath: selectedFolderPath
         });
         applyScannedFiles(result.files, nextCategories);
-        addLog("ok", `再スキャン完了: ${result.files.length.toLocaleString()}件`);
+        addLog("ok", `再スキャン完了: 直下ファイル ${result.files.length.toLocaleString()}件`);
       } catch (error) {
         addLog("error", `再スキャン失敗: ${error.message}`);
       } finally {
@@ -485,10 +409,9 @@ function App() {
     if (rootHandle) {
       try {
         setBusy(true);
-        const targetFolders = new Set(nextCategories.map((category) => category.folder));
-        const collected = await collectFilesFromDirectory(rootHandle, "", targetFolders, new Set(nextExcludedFolders));
+        const collected = await collectFilesFromDirectory(rootHandle);
         applyScannedFiles(collected, nextCategories);
-        addLog("ok", `再スキャン完了: ${collected.length.toLocaleString()}件`);
+        addLog("ok", `再スキャン完了: 直下ファイル ${collected.length.toLocaleString()}件`);
       } catch (error) {
         addLog("error", `再スキャン失敗: ${error.message}`);
       } finally {
@@ -497,24 +420,21 @@ function App() {
       return;
     }
 
-    await scanWithDirectoryPicker(nextExcludedFolders, nextCategories);
+    await scanWithDirectoryPicker(nextCategories);
   };
 
-  const scanWithDirectoryPicker = async (nextExcludedFolders = excludedFolders, nextCategories = categories) => {
+  const scanWithDirectoryPicker = async (nextCategories = categories) => {
     if (isDesktopApp) {
       try {
         setBusy(true);
         addLog("info", "フォルダ選択を開始しました");
-        const result = await window.assetOrganizer.selectFolder({
-          targetFolders: nextCategories.map((category) => category.folder),
-          excludedFolders: nextExcludedFolders
-        });
+        const result = await window.assetOrganizer.selectFolder();
         if (result.canceled) return;
         setRootHandle(null);
         setSelectedFolderPath(result.rootPath);
         setSelectedFolderName(result.folderName);
         applyScannedFiles(result.files, nextCategories);
-        addLog("ok", `スキャン完了: ${result.files.length.toLocaleString()}件`);
+        addLog("ok", `スキャン完了: 直下ファイル ${result.files.length.toLocaleString()}件`);
       } catch (error) {
         addLog("error", `スキャン失敗: ${error.message}`);
       } finally {
@@ -533,12 +453,11 @@ function App() {
       setBusy(true);
       addLog("info", "フォルダ選択を開始しました");
       const handle = await window.showDirectoryPicker({ mode: "readwrite" });
-      const targetFolders = new Set(nextCategories.map((category) => category.folder));
-      const collected = await collectFilesFromDirectory(handle, "", targetFolders, new Set(nextExcludedFolders));
+      const collected = await collectFilesFromDirectory(handle);
       setRootHandle(handle);
       setSelectedFolderName(folderLabel(handle));
       applyScannedFiles(collected, nextCategories);
-      addLog("ok", `スキャン完了: ${collected.length.toLocaleString()}件`);
+      addLog("ok", `スキャン完了: 直下ファイル ${collected.length.toLocaleString()}件`);
     } catch (error) {
       if (error?.name !== "AbortError") addLog("error", `スキャン失敗: ${error.message}`);
     } finally {
@@ -547,27 +466,21 @@ function App() {
   };
 
   const loadFilesFromInput = async (event) => {
-    const selected = [...(event.target.files ?? [])].map((file, index) => {
+    const selected = [...(event.target.files ?? [])].flatMap((file, index) => {
       const relativePath = file.webkitRelativePath || file.name;
-      const slashIndex = relativePath.lastIndexOf("/");
-      const folderPath = slashIndex >= 0 ? relativePath.slice(0, slashIndex) || "/" : "/";
+      const parts = relativePath.split("/").filter(Boolean);
+      if (parts.length > 2) return [];
       return {
-        id: makeFileId(relativePath, file.size, file.lastModified || index),
+        id: makeFileId(file.name, file.size, file.lastModified || index),
         name: file.name,
-        folderPath,
-        currentPath: relativePath,
+        folderPath: "/",
+        currentPath: file.name,
         size: file.size,
         lastModified: file.lastModified,
         ext: getExt(file.name),
         file,
         source: "input"
       };
-    }).filter((file) => {
-      if (file.folderPath === "/") return true;
-      return !file.folderPath.split("/").some((_, index, folders) => {
-        const relativeFolder = folders.slice(0, index + 1).join("/");
-        return shouldSkipFolder(folders[index], relativeFolder, new Set(excludedFolders));
-      });
     });
     if (!selected.length) return;
     setRootHandle(null);
@@ -576,7 +489,7 @@ function App() {
     setFiles(selected);
     resetIncludeMap(selected);
     setLastOperations([]);
-    addLog("ok", `内容確認用に${selected.length.toLocaleString()}件を読み込みました`);
+    addLog("ok", `内容確認用に直下ファイル ${selected.length.toLocaleString()}件を読み込みました`);
     event.target.value = "";
   };
 
@@ -657,34 +570,6 @@ function App() {
     setCategories(nextCategories);
     resetIncludeMap(files, nextCategories);
     addLog("info", enabled ? "プリセットを全選択しました" : "プリセットを全解除しました");
-  };
-
-  const addExcludedFolderValue = async (value) => {
-    const folder = normalizeFolderPattern(value);
-    if (!folder || busy) return;
-    if (excludedFolders.some((current) => current.toLowerCase() === folder.toLowerCase())) {
-      addLog("warn", `除外フォルダは登録済みです: ${folder}`);
-      setExcludeInput("");
-      return;
-    }
-
-    const nextExcludedFolders = [...excludedFolders, folder];
-    setExcludedFolders(nextExcludedFolders);
-    setExcludeInput("");
-    addLog("info", `除外フォルダを追加しました: ${folder}`);
-    if (rootHandle || selectedFolderPath) await scanCurrentFolder(nextExcludedFolders);
-  };
-
-  const addExcludedFolder = async () => {
-    await addExcludedFolderValue(excludeInput);
-  };
-
-  const removeExcludedFolder = async (folder) => {
-    if (busy) return;
-    const nextExcludedFolders = excludedFolders.filter((current) => current !== folder);
-    setExcludedFolders(nextExcludedFolders);
-    addLog("info", `除外フォルダを解除しました: ${folder}`);
-    if (rootHandle || selectedFolderPath) await scanCurrentFolder(nextExcludedFolders);
   };
 
   const toggleIncluded = (id) => {
@@ -902,70 +787,13 @@ function App() {
           </div>
         </section>
 
-        <section className="sidebar-section exclusion-section">
-          <h2>除外フォルダ</h2>
-          <div className="exclusion-box">
-            <div className="exclusion-input">
-              <input
-                value={excludeInput}
-                onChange={(event) => setExcludeInput(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") addExcludedFolder();
-                }}
-                placeholder="例: 保留 / old_assets"
-                disabled={busy}
-              />
-              <button className="mini-button" onClick={addExcludedFolder} disabled={busy || !normalizeFolderPattern(excludeInput)}>
-                追加
-              </button>
-            </div>
-            <p>名前一致、または選択フォルダからの相対パスで除外します。</p>
-            <div className="exclusion-list">
-              {excludedFolders.map((folder) => (
-                <span className="exclusion-chip" key={folder}>
-                  {folder}
-                  <button onClick={() => removeExcludedFolder(folder)} disabled={busy} aria-label={`${folder}の除外を解除`}>
-                    ×
-                  </button>
-                </span>
-              ))}
-              {excludedFolders.length === 0 && <span className="empty-chip">未設定</span>}
-            </div>
-            <div className="detected-folders">
-              <div className="detected-heading">
-                <strong>検出候補</strong>
-                <select
-                  value={folderCategoryFilter}
-                  onChange={(event) => setFolderCategoryFilter(event.target.value)}
-                  disabled={busy}
-                >
-                  <option value="all">全カテゴリ</option>
-                  {categories.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="detected-folder-list">
-                {visibleDetectedFolders.map((folder) => (
-                  <button
-                    className="detected-folder-button"
-                    key={folder.path}
-                    onClick={() => addExcludedFolderValue(folder.path)}
-                    disabled={busy}
-                    title={folder.path}
-                  >
-                    <span>
-                      <strong>{folder.name}</strong>
-                      <small>{folder.path}</small>
-                    </span>
-                    <em>{folder.category?.label ?? "未分類"} / {folder.count}件</em>
-                  </button>
-                ))}
-                {visibleDetectedFolders.length === 0 && <span className="empty-chip">候補なし</span>}
-              </div>
-            </div>
+        <section className="sidebar-section">
+          <h2>整理対象</h2>
+          <div className="folder-box">
+            <p>
+              選択したフォルダ直下のファイルだけを整理します。
+              <small>サブフォルダ内のファイルは自動で対象外です。</small>
+            </p>
           </div>
         </section>
 
