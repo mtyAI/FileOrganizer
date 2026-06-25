@@ -301,6 +301,9 @@ function App() {
   const [rootHandle, setRootHandle] = useState(null);
   const [selectedFolderPath, setSelectedFolderPath] = useState("");
   const [selectedFolderName, setSelectedFolderName] = useState("フォルダ選択無し");
+  const [outputRootHandle, setOutputRootHandle] = useState(null);
+  const [outputFolderPath, setOutputFolderPath] = useState("");
+  const [outputFolderName, setOutputFolderName] = useState("選択中フォルダを使用");
   const [includeMap, setIncludeMap] = useState({});
   const [excludedFolders, setExcludedFolders] = useState([]);
   const [excludeInput, setExcludeInput] = useState("");
@@ -364,8 +367,10 @@ function App() {
   const totalSize = files.reduce((sum, file) => sum + file.size, 0);
   const includedSize = includedFiles.reduce((sum, file) => sum + file.size, 0);
   const hasRealWrite = Boolean(rootHandle || selectedFolderPath);
+  const outputDestinationName = outputFolderPath || outputRootHandle ? outputFolderName : selectedFolderName;
   const duplicateCount = duplicates.reduce((sum, group) => sum + group.length, 0);
   const longPaths = plan.filter((file) => file.destination.length > 180);
+  const hasInvalidCategoryFolder = categories.some((category) => category.enabled && !normalizeFolderPattern(category.folder));
   const previewColumns = [
     { key: "select", label: "", width: columnWidths.select },
     { key: "name", label: "ファイル名", width: columnWidths.name, resizable: true },
@@ -548,6 +553,61 @@ function App() {
     event.target.value = "";
   };
 
+  const selectOutputFolder = async () => {
+    if (busy) return;
+
+    if (isDesktopApp) {
+      try {
+        setBusy(true);
+        addLog("info", "出力先フォルダ選択を開始しました");
+        const result = await window.assetOrganizer.selectOutputFolder();
+        if (result.canceled) return;
+        setOutputRootHandle(null);
+        setOutputFolderPath(result.outputPath);
+        setOutputFolderName(result.folderName);
+        addLog("ok", `出力先フォルダを設定しました: ${result.folderName}`);
+      } catch (error) {
+        addLog("error", `出力先フォルダ選択失敗: ${error.message}`);
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
+    if (!window.showDirectoryPicker) {
+      addLog("warn", "このブラウザでは出力先フォルダを選択できません");
+      return;
+    }
+
+    try {
+      setBusy(true);
+      const handle = await window.showDirectoryPicker({ mode: "readwrite" });
+      setOutputRootHandle(handle);
+      setOutputFolderPath("");
+      setOutputFolderName(folderLabel(handle));
+      addLog("ok", `出力先フォルダを設定しました: ${folderLabel(handle)}`);
+    } catch (error) {
+      if (error?.name !== "AbortError") addLog("error", `出力先フォルダ選択失敗: ${error.message}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resetOutputFolder = () => {
+    setOutputRootHandle(null);
+    setOutputFolderPath("");
+    setOutputFolderName("選択中フォルダを使用");
+    addLog("info", "出力先フォルダを選択中フォルダに戻しました");
+  };
+
+  const updateCategoryFolder = (id, folder) => {
+    const nextCategories = categories.map((category) =>
+      category.id === id ? { ...category, folder } : category
+    );
+    setCategories(nextCategories);
+    resetIncludeMap(files, nextCategories);
+  };
+
   const toggleCategory = (id) => {
     const nextCategories = categories.map((category) =>
       category.id === id ? { ...category, enabled: !category.enabled } : category
@@ -604,13 +664,18 @@ function App() {
 
   const runPlan = async () => {
     if (!includedFiles.length || busy) return;
+    if (hasInvalidCategoryFolder) {
+      addLog("warn", "移動先フォルダ名が空のカテゴリがあります");
+      return;
+    }
     setBusy(true);
     addLog("info", "バックアップを作成してから実行します");
 
     if (isDesktopApp && selectedFolderPath) {
       try {
         const result = await window.assetOrganizer.runPlan({
-          rootPath: selectedFolderPath,
+          sourceRootPath: selectedFolderPath,
+          outputRootPath: outputFolderPath || selectedFolderPath,
           files: includedFiles
         });
         const operations = result.operations.map((operation) => ({ ...operation, mode: "electron" }));
@@ -635,9 +700,10 @@ function App() {
 
     const operations = [];
     try {
+      const destinationRootHandle = outputRootHandle || rootHandle;
       for (const file of includedFiles) {
         if (!file.handle || !file.parentHandle || !file.category) continue;
-        const destinationDirectory = await ensureDirectory(rootHandle, file.category.folder);
+        const destinationDirectory = await ensureDirectory(destinationRootHandle, file.category.folder);
         await copyFileToHandle(file.handle, destinationDirectory, file.destinationName);
         await file.parentHandle.removeEntry(file.name);
         operations.push({
@@ -777,6 +843,26 @@ function App() {
           </div>
         </section>
 
+        <section className="sidebar-section">
+          <h2>出力先フォルダ</h2>
+          <div className="folder-box">
+            <div className="folder-row">
+              <FolderOpen size={22} />
+              <strong>{outputDestinationName}</strong>
+            </div>
+            <p>{outputFolderPath || outputRootHandle ? "指定したフォルダをルートにします。" : "未指定時は選択中フォルダをルートにします。"}</p>
+            <button className="outline-button full" onClick={selectOutputFolder} disabled={busy}>
+              <FolderOpen size={15} />
+              出力先を選択
+            </button>
+            {(outputFolderPath || outputRootHandle) && (
+              <button className="text-button full" onClick={resetOutputFolder} disabled={busy}>
+                選択中フォルダに戻す
+              </button>
+            )}
+          </div>
+        </section>
+
         <section className="sidebar-section exclusion-section">
           <h2>除外フォルダ</h2>
           <div className="exclusion-box">
@@ -858,17 +944,27 @@ function App() {
             {categories.map((category) => {
               const Icon = CATEGORY_ICONS[category.icon] ?? File;
               return (
-                <button
+                <div
                   key={category.id}
-                  className={`preset-button ${category.enabled ? "selected" : ""}`}
-                  onClick={() => toggleCategory(category.id)}
+                  className={`preset-item ${category.enabled ? "selected" : ""}`}
                 >
-                  <Icon size={18} />
-                  <span>
-                    <strong>{category.label}</strong>
-                    <small>{category.extensions.slice(0, 4).join(", ")}</small>
-                  </span>
-                </button>
+                  <button className="preset-button" type="button" onClick={() => toggleCategory(category.id)}>
+                    <Icon size={18} />
+                    <span>
+                      <strong>{category.label}</strong>
+                      <small>{category.extensions.slice(0, 4).join(", ")}</small>
+                    </span>
+                  </button>
+                  <label className="folder-name-field">
+                    <span>移動先</span>
+                    <input
+                      value={category.folder}
+                      onChange={(event) => updateCategoryFolder(category.id, event.target.value)}
+                      placeholder="例: 01_動画"
+                      disabled={busy}
+                    />
+                  </label>
+                </div>
               );
             })}
           </div>

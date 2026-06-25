@@ -361,16 +361,25 @@ button:disabled {
   background: #203134;
 }
 
+.preset-item {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #26393d;
+  border-radius: 8px;
+  background: #151f21;
+  padding: 9px;
+}
+
 .preset-button {
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr);
   align-items: center;
   width: 100%;
   gap: 10px;
-  min-height: 52px;
-  border: 1px solid #26393d;
-  background: #151f21;
-  padding: 9px 11px;
+  min-height: 42px;
+  border: 0;
+  background: transparent;
+  padding: 0;
   color: #dbe9e8;
   text-align: left;
 }
@@ -379,14 +388,38 @@ button:disabled {
   color: #789096;
 }
 
-.preset-button.selected {
+.preset-item.selected {
   border-color: #3ee0cc;
   background: #19302f;
   box-shadow: inset 3px 0 0 #3ee0cc;
 }
 
-.preset-button.selected svg {
+.preset-item.selected .preset-button svg {
   color: #3ee0cc;
+}
+
+.folder-name-field {
+  display: grid;
+  gap: 5px;
+}
+
+.folder-name-field span {
+  color: #8aa0a5;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.folder-name-field input {
+  width: 100%;
+  height: 30px;
+  min-width: 0;
+  border: 1px solid #29444a;
+  border-radius: 6px;
+  outline: 0;
+  background: #10191b;
+  color: #e9f2f0;
+  padding: 0 8px;
+  font-size: 11px;
 }
 
 .preset-button span,
@@ -1074,7 +1107,7 @@ body.resizing-column {
 
 .theme-light .brand-mark,
 .theme-light .folder-row svg,
-.theme-light .preset-button.selected svg {
+.theme-light .preset-item.selected .preset-button svg {
   color: #0f9b8e;
 }
 
@@ -1093,6 +1126,7 @@ body.resizing-column {
 }
 
 .theme-light .exclusion-input input,
+.theme-light .folder-name-field input,
 .theme-light .detected-heading select,
 .theme-light .detected-folder-button {
   border-color: #d6e1e2;
@@ -1143,7 +1177,7 @@ body.resizing-column {
   background: #edfafa;
 }
 
-.theme-light .preset-button {
+.theme-light .preset-item {
   border-color: #d6e1e2;
   background: #ffffff;
 }
@@ -1152,7 +1186,7 @@ body.resizing-column {
   color: #6f858b;
 }
 
-.theme-light .preset-button.selected {
+.theme-light .preset-item.selected {
   border-color: #0f9b8e;
   background: #e8fbf8;
   box-shadow: inset 3px 0 0 #0f9b8e;
@@ -1273,12 +1307,12 @@ body.resizing-column {
 }
 
 .theme-dark .mini-button,
-.theme-dark .preset-button {
+.theme-dark .preset-item {
   border-color: #26393d;
   background: #151f21;
 }
 
-.theme-dark .preset-button.selected {
+.theme-dark .preset-item.selected {
   border-color: #3ee0cc;
   background: #19302f;
   box-shadow: inset 3px 0 0 #3ee0cc;
