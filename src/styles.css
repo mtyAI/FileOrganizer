@@ -156,6 +156,28 @@ button:disabled {
   color: #9ab0b5;
 }
 
+.folder-box p small {
+  display: block;
+  overflow: hidden;
+  margin-top: 5px;
+  color: #71898f;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.root-mode {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  margin-right: 6px;
+  border-radius: 999px;
+  background: #102b2c;
+  color: #9dece3;
+  padding: 0 7px;
+  font-size: 10px;
+  font-weight: 850;
+}
+
 .exclusion-box {
   display: grid;
   gap: 8px;
@@ -422,6 +444,19 @@ button:disabled {
   font-size: 11px;
 }
 
+.folder-name-field input[aria-invalid="true"] {
+  border-color: #df5b55;
+  background: #2b1718;
+}
+
+.folder-name-field em {
+  color: #df5b55;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
 .preset-button span,
 .file-cell span,
 .duplicate-card span {
@@ -552,7 +587,7 @@ button:disabled {
 
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
   gap: 8px;
   margin: 18px 24px 18px;
 }
@@ -1119,10 +1154,16 @@ body.resizing-column {
 }
 
 .theme-light .folder-box p,
+.theme-light .folder-box p small,
 .theme-light .exclusion-box p,
 .theme-light .detected-folder-button small,
 .theme-light .preset-button small {
   color: #64767b;
+}
+
+.theme-light .root-mode {
+  background: #e8fbf8;
+  color: #08766e;
 }
 
 .theme-light .exclusion-input input,
@@ -1132,6 +1173,11 @@ body.resizing-column {
   border-color: #d6e1e2;
   background: #ffffff;
   color: #172026;
+}
+
+.theme-light .folder-name-field input[aria-invalid="true"] {
+  border-color: #d94b45;
+  background: #fff4f3;
 }
 
 .theme-light .exclusion-input input::placeholder {
@@ -1261,11 +1307,17 @@ body.resizing-column {
 .theme-dark .search-field,
 .theme-dark .search-field input,
 .theme-dark .exclusion-input input,
+.theme-dark .folder-name-field input,
 .theme-dark .detected-heading select,
 .theme-dark .detected-folder-button {
   border-color: #29444a;
   background: #10191b;
   color: #e9f2f0;
+}
+
+.theme-dark .folder-name-field input[aria-invalid="true"] {
+  border-color: #df5b55;
+  background: #2b1718;
 }
 
 .theme-dark .toolbar select {

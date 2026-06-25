@@ -156,6 +156,12 @@ const appendSuffix = (name, count) => {
 };
 const makeFileId = (path, size, lastModified = 0) => `${path}:${size}:${lastModified}`;
 const normalizeFolderPattern = (value) => String(value ?? "").trim().replaceAll("\\", "/").replace(/^\/+|\/+$/g, "");
+const isSafeRelativeFolder = (value) => {
+  const normalized = normalizeFolderPattern(value);
+  if (!normalized) return false;
+  if (/^[a-zA-Z]:/.test(normalized) || normalized.startsWith("/")) return false;
+  return normalized.split("/").every((part) => part && part !== "." && part !== "..");
+};
 
 function shouldSkipFolder(folderName, relativePath, excludedFolders) {
   const normalizedName = folderName.toLowerCase();
@@ -176,7 +182,13 @@ async function collectFilesFromDirectory(directoryHandle, path = "", targetFolde
   for await (const [name, entry] of directoryHandle.entries()) {
     if (entry.kind === "directory") {
       const relativePath = `${path}${name}`;
-      if (BACKUP_FOLDER_NAMES.has(name) || targetFolders.has(name) || shouldSkipFolder(name, relativePath, excludedFolders)) continue;
+      if (
+        BACKUP_FOLDER_NAMES.has(name) ||
+        shouldSkipFolder(name, relativePath, targetFolders) ||
+        shouldSkipFolder(name, relativePath, excludedFolders)
+      ) {
+        continue;
+      }
       const children = await collectFilesFromDirectory(entry, `${relativePath}/`, targetFolders, excludedFolders);
       entries.push(...children);
       continue;
@@ -281,7 +293,12 @@ function folderLabel(handle, fallback) {
 }
 
 async function ensureDirectory(rootHandle, folderName) {
-  return rootHandle.getDirectoryHandle(folderName, { create: true });
+  let current = rootHandle;
+  for (const part of normalizeFolderPattern(folderName).split("/")) {
+    if (!part) continue;
+    current = await current.getDirectoryHandle(part, { create: true });
+  }
+  return current;
 }
 
 async function copyFileToHandle(fileHandle, destinationDirectory, destinationName) {
@@ -367,10 +384,20 @@ function App() {
   const totalSize = files.reduce((sum, file) => sum + file.size, 0);
   const includedSize = includedFiles.reduce((sum, file) => sum + file.size, 0);
   const hasRealWrite = Boolean(rootHandle || selectedFolderPath);
-  const outputDestinationName = outputFolderPath || outputRootHandle ? outputFolderName : selectedFolderName;
+  const hasCustomOutputRoot = Boolean(outputFolderPath || outputRootHandle);
+  const outputDestinationName = hasCustomOutputRoot
+    ? outputFolderName
+    : hasRealWrite
+      ? selectedFolderName
+      : "選択中フォルダ未選択";
+  const outputDestinationDetail = hasCustomOutputRoot
+    ? outputFolderPath || "ブラウザで選択した出力先"
+    : selectedFolderPath || (rootHandle ? "ブラウザで選択中のフォルダ" : "フォルダ未選択");
+  const outputRootSummary = hasCustomOutputRoot ? "指定済み" : hasRealWrite ? "選択中フォルダ" : "未選択";
   const duplicateCount = duplicates.reduce((sum, group) => sum + group.length, 0);
   const longPaths = plan.filter((file) => file.destination.length > 180);
-  const hasInvalidCategoryFolder = categories.some((category) => category.enabled && !normalizeFolderPattern(category.folder));
+  const invalidCategoryFolders = categories.filter((category) => category.enabled && !isSafeRelativeFolder(category.folder));
+  const hasInvalidCategoryFolder = invalidCategoryFolders.length > 0;
   const previewColumns = [
     { key: "select", label: "", width: columnWidths.select },
     { key: "name", label: "ファイル名", width: columnWidths.name, resizable: true },
@@ -608,6 +635,14 @@ function App() {
     resetIncludeMap(files, nextCategories);
   };
 
+  const normalizeCategoryFolder = (id) => {
+    const nextCategories = categories.map((category) =>
+      category.id === id ? { ...category, folder: normalizeFolderPattern(category.folder) } : category
+    );
+    setCategories(nextCategories);
+    resetIncludeMap(files, nextCategories);
+  };
+
   const toggleCategory = (id) => {
     const nextCategories = categories.map((category) =>
       category.id === id ? { ...category, enabled: !category.enabled } : category
@@ -665,7 +700,7 @@ function App() {
   const runPlan = async () => {
     if (!includedFiles.length || busy) return;
     if (hasInvalidCategoryFolder) {
-      addLog("warn", "移動先フォルダ名が空のカテゴリがあります");
+      addLog("warn", `移動先フォルダ名を確認してください: ${invalidCategoryFolders.map((category) => category.label).join(", ")}`);
       return;
     }
     setBusy(true);
@@ -850,7 +885,11 @@ function App() {
               <FolderOpen size={22} />
               <strong>{outputDestinationName}</strong>
             </div>
-            <p>{outputFolderPath || outputRootHandle ? "指定したフォルダをルートにします。" : "未指定時は選択中フォルダをルートにします。"}</p>
+            <p>
+              <span className="root-mode">{hasCustomOutputRoot ? "指定ルート" : "既定ルート"}</span>
+              {hasCustomOutputRoot ? "指定したフォルダを出力先ルートにします。" : "未指定時は選択中のフォルダを出力先ルートにします。"}
+              <small>{outputDestinationDetail}</small>
+            </p>
             <button className="outline-button full" onClick={selectOutputFolder} disabled={busy}>
               <FolderOpen size={15} />
               出力先を選択
@@ -956,13 +995,18 @@ function App() {
                     </span>
                   </button>
                   <label className="folder-name-field">
-                    <span>移動先</span>
+                    <span>移動先フォルダ名</span>
                     <input
                       value={category.folder}
                       onChange={(event) => updateCategoryFolder(category.id, event.target.value)}
+                      onBlur={() => normalizeCategoryFolder(category.id)}
+                      aria-invalid={category.enabled && !isSafeRelativeFolder(category.folder)}
                       placeholder="例: 01_動画"
                       disabled={busy}
                     />
+                    {category.enabled && !isSafeRelativeFolder(category.folder) && (
+                      <em>空欄、絶対パス、.. は使えません。</em>
+                    )}
                   </label>
                 </div>
               );
@@ -991,6 +1035,7 @@ function App() {
           <Summary label="含めるファイル" value={includedFiles.length.toLocaleString()} positive />
           <Summary label="除外するファイル" value={excludedFiles.length.toLocaleString()} warning />
           <Summary label="重複グループ" value={`${duplicates.length.toLocaleString()} グループ`} warning={duplicates.length > 0} />
+          <Summary label="出力先ルート" value={outputRootSummary} detail={outputDestinationName} />
           <Summary label="状態" value={hasRealWrite ? "実行可能" : "フォルダ未選択"} detail={hasRealWrite ? "バックアップ対応" : "内容確認のみ"} />
         </section>
 
@@ -1180,6 +1225,7 @@ function App() {
           <div className="collapsible-content">
             <CheckItem ok={includedFiles.length > 0} label="移動対象が選択済み" />
             <CheckItem ok={hasRealWrite} warn={!hasRealWrite} label={hasRealWrite ? "フォルダの書き込み権限" : "フォルダ未選択"} />
+            <CheckItem ok={!hasInvalidCategoryFolder} warn={hasInvalidCategoryFolder} label={hasInvalidCategoryFolder ? `移動先フォルダ名: ${invalidCategoryFolders.length}件要確認` : "移動先フォルダ名OK"} />
             <CheckItem ok={longPaths.length === 0} warn={longPaths.length > 0} label={`長すぎるパス: ${longPaths.length} 件`} />
             <CheckItem ok={duplicates.length === 0} warn={duplicates.length > 0} label={`重複候補: ${duplicateCount} 件`} />
             <CheckItem ok label="バックアップ準備" />

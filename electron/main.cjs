@@ -6,6 +6,8 @@ const isDev = process.argv.includes("--dev");
 const BACKUP_DIR = "_file-organizer-backup";
 const BACKUP_DIRS = [BACKUP_DIR, "_asset-organizer-backup"];
 
+app.setName("FileOrganizer");
+
 function buildApplicationMenu() {
   const isMac = process.platform === "darwin";
   const template = [
@@ -70,6 +72,12 @@ function buildApplicationMenu() {
               { role: "front", label: "すべてを前面へ" }
             ]
           : [{ role: "close", label: "閉じる" }])
+      ]
+    },
+    {
+      label: "ヘルプ",
+      submenu: [
+        { role: "about", label: "FileOrganizerについて" }
       ]
     }
   ];
@@ -139,7 +147,7 @@ async function scanDirectory(rootPath, targetFolders, excludedFolders = [], curr
       const relativePath = toRelative(rootPath, absolutePath);
       if (
         BACKUP_DIRS.includes(entry.name) ||
-        targetFolders.includes(entry.name) ||
+        shouldSkipFolder(entry.name, relativePath, targetFolders) ||
         shouldSkipFolder(entry.name, relativePath, excludedFolders)
       ) {
         continue;
